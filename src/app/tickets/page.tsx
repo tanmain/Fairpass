@@ -10,18 +10,8 @@ type Ticket = {
   idType: string | null
   idBoundAt: string | null
   qrToken: string | null
-  event: {
-    title: string
-    venue: string
-    city: string
-    eventDate: string
-    ticketPrice: number
-    penaltyPercent: number
-  }
-  purchase: {
-    idDeadline: string
-    paymentRef: string
-  }
+  event: { title: string; venue: string; city: string; eventDate: string; ticketPrice: number; penaltyPercent: number }
+  purchase: { idDeadline: string; paymentRef: string }
 }
 
 const ID_TYPES = [
@@ -53,7 +43,10 @@ export default function TicketsPage() {
       fetch('/api/tickets').then(r => r.json()),
       fetch('/api/auth/me').then(r => r.json()),
     ]).then(([tData, meData]) => {
-      if (!meData.user) { router.push('/login'); return }
+      if (!meData.user) {
+        router.push('/login')
+        return
+      }
       setTickets(tData.tickets || [])
       setUser(meData.user)
       setLoading(false)
@@ -70,14 +63,15 @@ export default function TicketsPage() {
     })
     const data = await res.json()
     setBindLoading(false)
-    if (!res.ok) { setBindError(data.error); return }
-
-    setTickets(prev => prev.map(t => t.id === ticketId
-      ? { ...t, status: 'BOUND', attendeeName: data.ticket.attendeeName, idType: data.ticket.idType, idBoundAt: data.ticket.idBoundAt }
-      : t
-    ))
+    if (!res.ok) {
+      setBindError(data.error)
+      return
+    }
+    setTickets(prev =>
+      prev.map(t => t.id === ticketId
+        ? { ...t, status: 'BOUND', attendeeName: data.ticket.attendeeName, idType: data.ticket.idType, idBoundAt: data.ticket.idBoundAt }
+        : t))
     setBindingId(null)
-
     if (data.ticket.qrDataURL) {
       setQrModal({
         dataURL: data.ticket.qrDataURL,
@@ -94,7 +88,6 @@ export default function TicketsPage() {
     const data = await res.json()
     setCancelLoading(false)
     if (!res.ok) return
-
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: 'REFUNDED' } : t))
     setCancelResult({ penaltyAmount: data.penaltyAmount, refundAmount: data.refundAmount })
   }
@@ -105,22 +98,17 @@ export default function TicketsPage() {
     const data = await res.json()
     setQrLoading(null)
     if (!res.ok) return
-    setQrModal({
-      dataURL: data.qrDataURL,
-      attendeeName: data.attendeeName,
-      eventTitle: data.eventTitle,
-      idType: data.idType,
-    })
+    setQrModal({ dataURL: data.qrDataURL, attendeeName: data.attendeeName, eventTitle: data.eventTitle, idType: data.idType })
   }
 
   async function handleTransfer(ticketId: string) {
-  setTransferLoading(ticketId)
-  const res = await fetch(`/api/tickets/${ticketId}/transfer`, { method: 'POST' })
-  const data = await res.json()
-  setTransferLoading(null)
-  if (!res.ok) return
-  setTransferModal({ code: data.transferCode, expiresAt: data.expiresAt })
-}
+    setTransferLoading(ticketId)
+    const res = await fetch(`/api/tickets/${ticketId}/transfer`, { method: 'POST' })
+    const data = await res.json()
+    setTransferLoading(null)
+    if (!res.ok) return
+    setTransferModal({ code: data.transferCode, expiresAt: data.expiresAt })
+  }
 
   function downloadQR() {
     if (!qrModal) return
@@ -135,36 +123,56 @@ export default function TicketsPage() {
     router.push('/')
   }
 
-  if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)' }}>Loading tickets...</div>
+  if (loading) {
+    return <div className="app-shell" style={centerStyle}><span className="muted">Loading tickets...</span></div>
+  }
+
+  const activeCount = tickets.filter(ticket => ['PENDING_ID', 'BOUND'].includes(getEffectiveStatus(ticket))).length
+  const readyForQrCount = tickets.filter(ticket => getEffectiveStatus(ticket) === 'BOUND').length
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <nav style={{ padding: '18px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
-        <Link href="/events">
-          <span style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em' }}>
-            fair<span style={{ color: 'var(--accent)' }}>pass</span>
-          </span>
-        </Link>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <Link href="/events"><button style={ghostBtn}>Events</button></Link>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{user?.name}</span>
-          <button onClick={logout} style={{ ...ghostBtn, color: 'var(--text-muted)' }}>Sign out</button>
+    <div className="app-shell">
+      <nav className="topbar">
+        <Link href="/" className="brand">fair<span className="brand-accent">pass</span></Link>
+        <div className="nav-actions">
+          <Link href="/events" className="button button-secondary">Browse events</Link>
+          <span className="muted">{user?.name}</span>
+          <button onClick={logout} className="button button-ghost">Sign out</button>
         </div>
       </nav>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '48px 24px' }}>
-        <h1 style={{ fontFamily: 'Syne', fontSize: '2rem', fontWeight: 800, marginBottom: 8 }}>My tickets</h1>
-        <p style={{ color: 'var(--text-muted)', marginBottom: 36 }}>
-          Bind a government ID to each ticket to confirm your attendance.
-        </p>
+      <main className="page-container page-section">
+        <section className="hero-panel" style={{ padding: 28, marginBottom: 24 }}>
+          <div className="eyebrow" style={{ marginBottom: 16 }}>
+            <span style={dotStyle('var(--accent)')} />
+            <span>Ticket wallet</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'end', flexWrap: 'wrap' }}>
+            <div>
+              <h1 className="section-heading" style={{ marginBottom: 12 }}>Manage IDs, QR codes, transfers, and refunds in one calmer flow.</h1>
+              <p className="section-copy">Ticket states are now easier to scan: what needs attention, what is ready for entry, and what has already been resolved.</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14, minWidth: 320, flex: '0 0 360px' }}>
+              <div className="stat-card">
+                <div className="stat-label">Active tickets</div>
+                <div className="stat-value">{activeCount}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Ready for QR</div>
+                <div className="stat-value">{readyForQrCount}</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {tickets.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
-            No tickets yet.{' '}
-            <Link href="/events" style={{ color: 'var(--accent)' }}>Browse events →</Link>
+          <div className="panel" style={{ textAlign: 'center' }}>
+            <h2 style={{ fontSize: '1.4rem', marginBottom: 8 }}>No tickets yet</h2>
+            <p className="muted" style={{ marginBottom: 16 }}>When you buy an event, it will appear here with the next required action.</p>
+            <Link href="/events" className="button button-primary">Browse events</Link>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'grid', gap: 18 }}>
             {tickets.map(ticket => (
               <TicketCard
                 key={ticket.id}
@@ -186,153 +194,80 @@ export default function TicketsPage() {
             ))}
           </div>
         )}
-      </div>
+      </main>
 
-      {/* Cancel confirmation modal */}
       {cancelModal && !cancelResult && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
-          onClick={() => setCancelModal(null)}
-        >
-          <div
-            style={{ background: 'var(--surface)', border: '1px solid var(--red)', borderRadius: 16, padding: 32, maxWidth: 420, width: '100%' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ fontSize: '2rem', marginBottom: 12 }}>⚠️</div>
-            <h3 style={{ fontFamily: 'Syne', fontSize: '1.2rem', marginBottom: 8 }}>Cancel this ticket?</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: 20 }}>
-              You are about to cancel your ticket for <strong style={{ color: 'var(--text)' }}>{cancelModal.event.title}</strong>.
+        <div className="dialog-backdrop" onClick={() => setCancelModal(null)}>
+          <div className="dialog" onClick={e => e.stopPropagation()}>
+            <div className="badge badge-danger" style={{ marginBottom: 14 }}>Cancel ticket</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Cancel this ticket?</h3>
+            <p className="muted" style={{ marginBottom: 18 }}>
+              This will cancel your ticket for {cancelModal.event.title} and apply the policy below.
             </p>
-
-            <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '16px', marginBottom: 20, fontSize: '0.875rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Ticket price</span>
-                <span>₹{cancelModal.event.ticketPrice.toLocaleString('en-IN')}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--red)' }}>Penalty ({cancelModal.event.penaltyPercent}% retained)</span>
-                <span style={{ color: 'var(--red)' }}>− ₹{(cancelModal.event.ticketPrice * cancelModal.event.penaltyPercent / 100).toLocaleString('en-IN')}</span>
-              </div>
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                <span style={{ color: 'var(--green)' }}>You will receive</span>
-                <span style={{ color: 'var(--green)' }}>₹{(cancelModal.event.ticketPrice * (1 - cancelModal.event.penaltyPercent / 100)).toLocaleString('en-IN')}</span>
-              </div>
+            <div className="card-soft" style={{ padding: 16, marginBottom: 18 }}>
+              <Row label="Ticket price" value={`Rs ${cancelModal.event.ticketPrice.toLocaleString('en-IN')}`} />
+              <Row label={`Penalty (${cancelModal.event.penaltyPercent}%)`} value={`Rs ${(cancelModal.event.ticketPrice * cancelModal.event.penaltyPercent / 100).toLocaleString('en-IN')}`} />
+              <div className="divider" style={{ margin: '12px 0' }} />
+              <Row label="Refund amount" value={`Rs ${(cancelModal.event.ticketPrice * (1 - cancelModal.event.penaltyPercent / 100)).toLocaleString('en-IN')}`} />
             </div>
-
-            <div style={{ background: 'rgba(232,255,71,0.05)', border: '1px solid rgba(232,255,71,0.2)', borderRadius: 8, padding: '12px 16px', marginBottom: 24, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              💡 Can't attend? Consider <strong style={{ color: 'var(--accent)' }}>transferring your ticket</strong> to someone else at face value — no penalty fees.
+            <div className="card-soft" style={{ padding: 14, marginBottom: 18 }}>
+              <span className="muted">Consider transferring instead if you want to avoid the cancellation penalty.</span>
             </div>
-
             <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => handleCancel(cancelModal.id)}
-                disabled={cancelLoading}
-                style={{ flex: 1, background: 'var(--red)', color: 'white', border: 'none', borderRadius: 8, padding: '11px', fontFamily: 'Syne', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', opacity: cancelLoading ? 0.6 : 1 }}
-              >
-                {cancelLoading ? 'Cancelling...' : 'Yes, cancel ticket'}
+              <button onClick={() => handleCancel(cancelModal.id)} disabled={cancelLoading} className="button button-danger" style={{ flex: 1 }}>
+                {cancelLoading ? 'Cancelling...' : 'Confirm cancel'}
               </button>
-              <button onClick={() => setCancelModal(null)} style={{ ...ghostBtn, flex: 1 }}>
-                Keep ticket
-              </button>
+              <button onClick={() => setCancelModal(null)} className="button button-secondary" style={{ flex: 1 }}>Keep ticket</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Cancel success modal */}
       {cancelResult && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
-          onClick={() => { setCancelResult(null); setCancelModal(null) }}
-        >
-          <div
-            style={{ background: 'var(--surface)', border: '1px solid var(--green)', borderRadius: 16, padding: 32, maxWidth: 380, width: '100%', textAlign: 'center' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>✅</div>
-            <h3 style={{ fontFamily: 'Syne', fontSize: '1.2rem', marginBottom: 8 }}>Ticket cancelled</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 20, lineHeight: 1.6 }}>
-              Your refund of <strong style={{ color: 'var(--green)' }}>₹{cancelResult.refundAmount.toLocaleString('en-IN')}</strong> has been processed.
-              A penalty of <strong style={{ color: 'var(--red)' }}>₹{cancelResult.penaltyAmount.toLocaleString('en-IN')}</strong> was retained.
+        <div className="dialog-backdrop" onClick={() => { setCancelResult(null); setCancelModal(null) }}>
+          <div className="dialog" onClick={e => e.stopPropagation()}>
+            <div className="badge badge-success" style={{ marginBottom: 14 }}>Refund processed</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Ticket cancelled</h3>
+            <p className="muted" style={{ marginBottom: 20 }}>
+              Refund amount: Rs {cancelResult.refundAmount.toLocaleString('en-IN')} | Penalty retained: Rs {cancelResult.penaltyAmount.toLocaleString('en-IN')}
             </p>
-            <button
-              onClick={() => { setCancelResult(null); setCancelModal(null) }}
-              style={accentBtn}
-            >
-              Done
-            </button>
+            <button onClick={() => { setCancelResult(null); setCancelModal(null) }} className="button button-primary button-full">Done</button>
           </div>
         </div>
       )}
 
-      {/* Transfer code modal */}
-{transferModal && (
-  <div
-    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
-    onClick={() => setTransferModal(null)}
-  >
-    <div
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, maxWidth: 400, width: '100%', textAlign: 'center' }}
-      onClick={e => e.stopPropagation()}
-    >
-      <div style={{ fontSize: '2rem', marginBottom: 12 }}>↔️</div>
-      <h3 style={{ fontFamily: 'Syne', fontSize: '1.2rem', marginBottom: 8 }}>Transfer code generated</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 24, lineHeight: 1.6 }}>
-        Share this code with the buyer. It expires in 24 hours and can only be used once.
-      </p>
+      {transferModal && (
+        <div className="dialog-backdrop" onClick={() => setTransferModal(null)}>
+          <div className="dialog" onClick={e => e.stopPropagation()}>
+            <div className="badge badge-cyan" style={{ marginBottom: 14 }}>Transfer code</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Share this code with the buyer.</h3>
+            <p className="muted" style={{ marginBottom: 18 }}>The code expires in 24 hours and can only be used once.</p>
+            <div className="card-soft" style={{ padding: 22, marginBottom: 14, textAlign: 'center' }}>
+              <div style={{ fontFamily: 'Sora', fontSize: '2.1rem', fontWeight: 700, letterSpacing: '0.18em', color: 'var(--accent)' }}>
+                {transferModal.code.slice(0, 4)} {transferModal.code.slice(4)}
+              </div>
+            </div>
+            <p className="muted" style={{ marginBottom: 18 }}>Expires: {new Date(transferModal.expiresAt).toLocaleString('en-IN')}</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => navigator.clipboard.writeText(transferModal.code)} className="button button-primary" style={{ flex: 1 }}>Copy code</button>
+              <button onClick={() => setTransferModal(null)} className="button button-secondary" style={{ flex: 1 }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '24px 16px', marginBottom: 16 }}>
-  <div style={{ fontFamily: 'Syne', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
-    <div style={{ fontSize: '2.5rem', letterSpacing: '0.3em' }}>{transferModal.code.slice(0, 4)}</div>
-    <div style={{ color: 'var(--border)', fontSize: '1rem', margin: '4px 0' }}>· · · ·</div>
-    <div style={{ fontSize: '2.5rem', letterSpacing: '0.3em' }}>{transferModal.code.slice(4)}</div>
-  </div>
-</div>
-
-      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 24 }}>
-        Expires: {new Date(transferModal.expiresAt).toLocaleString('en-IN')}
-      </div>
-
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button
-          onClick={() => { navigator.clipboard.writeText(transferModal.code) }}
-          style={{ ...accentBtn, flex: 1, padding: '11px' }}
-        >
-          Copy code
-        </button>
-        <button onClick={() => setTransferModal(null)} style={{ ...ghostBtn, flex: 1 }}>
-          Close
-        </button>
-      </div>
-
-      <div style={{ marginTop: 20, padding: '12px', background: 'rgba(232,255,71,0.05)', border: '1px solid rgba(232,255,71,0.2)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        Buyer redeems at: <strong style={{ color: 'var(--accent)' }}>localhost:3000/transfer</strong>
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* QR Modal */}
       {qrModal && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
-          onClick={() => setQrModal(null)}
-        >
-          <div
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, textAlign: 'center', maxWidth: 380, width: '100%' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ fontFamily: 'Syne', fontSize: '1.2rem', marginBottom: 4 }}>Entry QR Code</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 4 }}>{qrModal.eventTitle}</p>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 24 }}>
-              {qrModal.attendeeName} · {qrModal.idType}
-            </p>
-            <div style={{ background: 'white', borderRadius: 12, padding: 16, display: 'inline-block', marginBottom: 24 }}>
+        <div className="dialog-backdrop" onClick={() => setQrModal(null)}>
+          <div className="dialog" onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div className="badge badge-success" style={{ marginBottom: 14 }}>Entry ready</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: 6 }}>{qrModal.eventTitle}</h3>
+            <p className="muted" style={{ marginBottom: 18 }}>{qrModal.attendeeName} | {qrModal.idType}</p>
+            <div style={{ background: 'white', padding: 16, borderRadius: 20, display: 'inline-block', marginBottom: 18 }}>
               <img src={qrModal.dataURL} alt="QR code" style={{ width: 240, height: 240, display: 'block' }} />
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={downloadQR} style={{ ...accentBtn, flex: 1 }}>↓ Download PNG</button>
-              <button onClick={() => setQrModal(null)} style={{ ...ghostBtn, flex: 1 }}>Close</button>
+              <button onClick={downloadQR} className="button button-primary" style={{ flex: 1 }}>Download QR</button>
+              <button onClick={() => setQrModal(null)} className="button button-secondary" style={{ flex: 1 }}>Close</button>
             </div>
           </div>
         </div>
@@ -341,68 +276,64 @@ export default function TicketsPage() {
   )
 }
 
-function TicketCard({ ticket, isBinding, bindForm, bindError, bindLoading, qrLoading, onStartBind, onCancelBind, onBind, onFormChange, onShowQR, onCancelTicket, onTransfer, transferLoading }: any) {
+function TicketCard({
+  ticket,
+  isBinding,
+  bindForm,
+  bindError,
+  bindLoading,
+  qrLoading,
+  onStartBind,
+  onCancelBind,
+  onBind,
+  onFormChange,
+  onShowQR,
+  onCancelTicket,
+  onTransfer,
+  transferLoading,
+}: any) {
   const deadline = new Date(ticket.purchase.idDeadline)
   const now = new Date()
-  const expired = now > deadline
+  const effectiveStatus = getEffectiveStatus(ticket)
+  const expired = effectiveStatus === 'INVALID'
   const hoursLeft = Math.max(0, Math.floor((deadline.getTime() - now.getTime()) / 3600000))
   const minsLeft = Math.max(0, Math.floor(((deadline.getTime() - now.getTime()) % 3600000) / 60000))
 
-  const statusColor: Record<string, string> = {
-    PENDING_ID: 'var(--orange)',
-    BOUND: 'var(--green)',
-    INVALID: 'var(--red)',
-    USED: 'var(--text-muted)',
-    TRANSFERRED: 'var(--text-muted)',
-    REFUNDED: 'var(--text-muted)',
+  const statusClass: Record<string, string> = {
+    PENDING_ID: 'badge-warning',
+    BOUND: 'badge-success',
+    INVALID: 'badge-danger',
+    USED: 'badge-neutral',
+    TRANSFERRED: 'badge-neutral',
+    REFUNDED: 'badge-neutral',
   }
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <h3 style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1.05rem' }}>{ticket.event.title}</h3>
-            <span style={{
-              background: `${statusColor[ticket.status]}20`,
-              color: statusColor[ticket.status],
-              border: `1px solid ${statusColor[ticket.status]}40`,
-              borderRadius: 100,
-              padding: '2px 10px',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-            }}>
-              {ticket.status.replace('_', ' ')}
-            </span>
+    <div className="panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', marginBottom: 18 }}>
+        <div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+            <h3 style={{ fontSize: '1.28rem' }}>{ticket.event.title}</h3>
+            <span className={`badge ${statusClass[effectiveStatus] || 'badge-neutral'}`}>{effectiveStatus.replace('_', ' ')}</span>
           </div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.6 }}>
-            <div>{ticket.event.venue} · {ticket.event.city}</div>
-            <div>{new Date(ticket.event.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div>
-          </div>
+          <p className="muted">{ticket.event.venue} | {ticket.event.city}</p>
+          <p className="muted">{new Date(ticket.event.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</p>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'Syne', fontWeight: 700 }}>₹{ticket.event.ticketPrice.toLocaleString('en-IN')}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: 4 }}>{ticket.purchase.paymentRef}</div>
+          <div style={{ fontFamily: 'Sora', fontWeight: 700, fontSize: '1.3rem' }}>Rs {ticket.event.ticketPrice.toLocaleString('en-IN')}</div>
+          <div className="muted" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{ticket.purchase.paymentRef}</div>
         </div>
       </div>
 
-      {ticket.status === 'PENDING_ID' && (
-        <div style={{ padding: '0 24px 20px' }}>
-          <div style={{ background: expired ? 'rgba(255,71,87,0.08)' : 'rgba(255,159,67,0.08)', border: `1px solid ${expired ? 'var(--red)' : 'var(--orange)'}40`, borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.85rem' }}>
-            {expired
-              ? <span style={{ color: 'var(--red)' }}>⚠️ Grace period expired — ticket will be invalidated</span>
-              : <span style={{ color: 'var(--orange)' }}>⏱ Add ID within: <strong>{hoursLeft}h {minsLeft}m</strong> · Deadline: {deadline.toLocaleString('en-IN')}</span>
-            }
+      {effectiveStatus === 'PENDING_ID' && (
+        <>
+          <div className="badge badge-warning" style={{ width: '100%', justifyContent: 'center', padding: '12px 14px', marginBottom: 16 }}>
+            {`Bind ID within ${hoursLeft}h ${minsLeft}m | Deadline ${deadline.toLocaleString('en-IN')}`}
           </div>
           {!isBinding ? (
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={onStartBind} disabled={expired} style={{ ...accentBtn, flex: 1, opacity: expired ? 0.5 : 1 }}>
-                Bind government ID
-              </button>
-              <button onClick={onCancelTicket} style={{ background: 'transparent', color: 'var(--red)', border: '1px solid var(--red)40', borderRadius: 8, padding: '10px 16px', fontFamily: 'Syne', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}>
-                Cancel
-              </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={onStartBind} className="button button-primary">Bind government ID</button>
+              <button onClick={onCancelTicket} className="button button-danger">Cancel ticket</button>
             </div>
           ) : (
             <BindForm
@@ -414,129 +345,88 @@ function TicketCard({ ticket, isBinding, bindForm, bindError, bindLoading, qrLoa
               onCancel={onCancelBind}
             />
           )}
-        </div>
+        </>
       )}
 
-      {ticket.status === 'BOUND' && (
-        <div style={{ padding: '0 24px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            <span style={{ color: 'var(--green)' }}>✓ </span>
-            Bound to <strong style={{ color: 'var(--text)' }}>{ticket.attendeeName}</strong> · {ticket.idType}
+      {effectiveStatus === 'BOUND' && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="card-soft" style={{ padding: 14, flex: 1 }}>
+            <span className="muted">Bound to </span>
+            <strong>{ticket.attendeeName}</strong>
+            <span className="muted"> | {ticket.idType}</span>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onShowQR} disabled={qrLoading} style={{ ...ghostBtn, opacity: qrLoading ? 0.6 : 1 }}>
-              {qrLoading ? 'Loading...' : '🔲 View QR'}
-            </button>
-            <button
-              onClick={onTransfer}
-              disabled={transferLoading}
-              style={{ ...ghostBtn, opacity: transferLoading ? 0.6 : 1 }}
-            >
-              {transferLoading ? 'Generating...' : '↔ Transfer'}
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={onShowQR} disabled={qrLoading} className="button button-secondary">{qrLoading ? 'Loading QR...' : 'View QR'}</button>
+            <button onClick={onTransfer} disabled={transferLoading} className="button button-secondary">{transferLoading ? 'Generating...' : 'Transfer'}</button>
           </div>
         </div>
       )}
 
-      {ticket.status === 'INVALID' && (
-        <div style={{ padding: '0 24px 20px', fontSize: '0.875rem', color: 'var(--red)' }}>
-          Ticket invalidated — grace period expired without ID binding.
-        </div>
-      )}
-
-      {ticket.status === 'REFUNDED' && (
-        <div style={{ padding: '0 24px 20px', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-          Ticket cancelled — refund processed.
-        </div>
-      )}
+      {effectiveStatus === 'INVALID' && <div className="badge badge-danger" style={{ width: '100%', justifyContent: 'center', padding: '12px 14px' }}>Ticket invalidated because the grace period expired.</div>}
+      {effectiveStatus === 'REFUNDED' && <div className="badge badge-neutral" style={{ width: '100%', justifyContent: 'center', padding: '12px 14px' }}>Ticket cancelled and refund processed.</div>}
     </div>
   )
 }
 
 function BindForm({ form, error, loading, onChange, onSubmit, onCancel }: any) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+    <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
-          <label style={labelStyle}>Attendee name</label>
-          <input
-            value={form.attendeeName}
-            onChange={e => onChange({ ...form, attendeeName: e.target.value })}
-            placeholder="Full name (as on ID)"
-            style={inputStyle}
-          />
+          <label className="label">Attendee name</label>
+          <input value={form.attendeeName} onChange={e => onChange({ ...form, attendeeName: e.target.value })} placeholder="Full name on ID" className="input" />
         </div>
         <div>
-          <label style={labelStyle}>ID type</label>
-          <select
-            value={form.idType}
-            onChange={e => onChange({ ...form, idType: e.target.value })}
-            style={{ ...inputStyle, appearance: 'none' } as React.CSSProperties}
-          >
+          <label className="label">ID type</label>
+          <select value={form.idType} onChange={e => onChange({ ...form, idType: e.target.value })} className="select">
             {ID_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
       </div>
       <div>
-        <label style={labelStyle}>ID number</label>
-        <input
-          value={form.idNumber}
-          onChange={e => onChange({ ...form, idNumber: e.target.value })}
-          placeholder="Enter your ID number"
-          style={inputStyle}
-        />
+        <label className="label">ID number</label>
+        <input value={form.idNumber} onChange={e => onChange({ ...form, idNumber: e.target.value })} placeholder="Enter your ID number" className="input" />
       </div>
-      {error && <div style={{ color: 'var(--red)', fontSize: '0.85rem' }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={onSubmit} disabled={loading} style={{ ...accentBtn, flex: 1 }}>
-          {loading ? 'Saving...' : 'Confirm & bind ID'}
-        </button>
-        <button onClick={onCancel} style={ghostBtn}>Cancel</button>
+      {error && <div className="badge badge-danger" style={{ width: '100%', justifyContent: 'center', padding: '12px 14px' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button onClick={onSubmit} disabled={loading} className="button button-primary">{loading ? 'Saving...' : 'Confirm and bind'}</button>
+        <button onClick={onCancel} className="button button-secondary">Cancel</button>
       </div>
     </div>
   )
 }
 
-const ghostBtn: React.CSSProperties = {
-  background: 'transparent',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
-  borderRadius: 8,
-  padding: '8px 16px',
-  fontFamily: 'Syne',
-  fontWeight: 600,
-  fontSize: '0.875rem',
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span className="muted">{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
 }
 
-const accentBtn: React.CSSProperties = {
-  background: 'var(--accent)',
-  color: '#0a0a0f',
-  border: 'none',
-  borderRadius: 8,
-  padding: '10px 16px',
-  fontFamily: 'Syne',
-  fontWeight: 700,
-  fontSize: '0.875rem',
-  cursor: 'pointer',
+function getEffectiveStatus(ticket: Ticket) {
+  if (ticket.status === 'PENDING_ID' && new Date(ticket.purchase.idDeadline) < new Date()) {
+    return 'INVALID'
+  }
+
+  return ticket.status
 }
 
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  marginBottom: 5,
-  fontSize: '0.8rem',
-  fontWeight: 500,
-  color: 'var(--text-muted)',
+const centerStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 24,
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: 'var(--surface-2)',
-  border: '1px solid var(--border)',
-  borderRadius: 7,
-  padding: '9px 12px',
-  color: 'var(--text)',
-  fontSize: '0.9rem',
-  outline: 'none',
+function dotStyle(color: string) {
+  return {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: color,
+    display: 'inline-block',
+  } as React.CSSProperties
 }

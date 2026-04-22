@@ -1,13 +1,7 @@
 {
-  "/not-found": "app/not-found.js",
-  "/events/page": "app/events/page.js",
+  "/tickets/page": "app/tickets/page.js",
   "/page": "app/page.js",
   "/events/[eventId]/page": "app/events/[eventId]/page.js",
-  "/register/page": "app/register/page.js",
-  "/api/tickets/route": "app/api/tickets/route.js",
-  "/tickets/page": "app/tickets/page.js",
-  "/api/events/[id]/route": "app/api/events/[id]/route.js",
-  "/api/auth/me/route": "app/api/auth/me/route.js",
-  "/api/events/route": "app/api/events/route.js",
-  "/api/tickets/[id]/bind/route": "app/api/tickets/[id]/bind/route.js"
+  "/login/page": "app/login/page.js",
+  "/events/page": "app/events/page.js"
 }

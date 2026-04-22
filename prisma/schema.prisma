@@ -66,6 +66,8 @@ model Event {
 
   isHighDemand        Boolean     @default(false)
 
+  imageUrl            String?
+
   organizerId         String
   organizer           User        @relation(fields: [organizerId], references: [id])
 

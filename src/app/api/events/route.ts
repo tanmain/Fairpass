@@ -15,6 +15,7 @@ const CreateEventSchema = z.object({
   gracePeriodHours: z.number().int().min(1).max(72).default(6),
   penaltyPercent: z.number().min(0).max(50).default(20),
   isHighDemand: z.boolean().default(false),
+  imageUrl: z.string().url().optional().or(z.literal('')).transform(v => v || undefined),
 })
 
 // GET /api/events

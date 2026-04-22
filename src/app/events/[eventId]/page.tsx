@@ -17,8 +17,11 @@ type Event = {
   gracePeriodHours: number
   penaltyPercent: number
   isHighDemand: boolean
+  imageUrl: string | null
   organizer: { name: string }
 }
+
+type TimeLeft = { days: number; hours: number; mins: number; secs: number }
 
 export default function EventDetailPage({ params }: { params: { eventId: string } }) {
   const router = useRouter()
@@ -29,6 +32,8 @@ export default function EventDetailPage({ params }: { params: { eventId: string 
   const [error, setError] = useState('')
   const [success, setSuccess] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [viewers, setViewers] = useState(0)
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>({ days: 0, hours: 0, mins: 0, secs: 0 })
 
   useEffect(() => {
     Promise.all([
@@ -41,11 +46,38 @@ export default function EventDetailPage({ params }: { params: { eventId: string 
     })
   }, [params.eventId])
 
+  useEffect(() => {
+    setViewers(Math.floor(Math.random() * 1800) + 500)
+    const id = setInterval(() => {
+      setViewers(v => Math.max(180, Math.min(5000, v + Math.floor(Math.random() * 30) - 12)))
+    }, 3000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    if (!event) return
+    const tick = () => {
+      const diff = new Date(event.eventDate).getTime() - Date.now()
+      if (diff <= 0) return
+      setTimeLeft({
+        days: Math.floor(diff / 86400000),
+        hours: Math.floor((diff % 86400000) / 3600000),
+        mins: Math.floor((diff % 3600000) / 60000),
+        secs: Math.floor((diff % 60000) / 1000),
+      })
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [event])
+
   async function handlePurchase() {
-    if (!user) { router.push('/login'); return }
+    if (!user) {
+      router.push('/login')
+      return
+    }
     setPurchasing(true)
     setError('')
-
     const res = await fetch('/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -53,159 +85,192 @@ export default function EventDetailPage({ params }: { params: { eventId: string 
     })
     const data = await res.json()
     setPurchasing(false)
-
-    if (!res.ok) { setError(data.error || 'Purchase failed'); return }
+    if (!res.ok) {
+      setError(data.error || 'Purchase failed')
+      return
+    }
     setSuccess(data)
   }
 
-  if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
-  if (!event) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--red)' }}>Event not found.</div>
+  if (loading) return <div className="app-shell" style={centerStyle}><span className="muted">Loading event...</span></div>
+  if (!event) return <div className="app-shell" style={centerStyle}><span style={{ color: 'var(--red)' }}>Event not found.</span></div>
 
   const date = new Date(event.eventDate)
+  const soldOut = event.availableInventory === 0
+  const fillPct = ((event.totalInventory - event.availableInventory) / event.totalInventory) * 100
+  const fewLeft = !soldOut && event.availableInventory < event.totalInventory * 0.15
   const total = (event.ticketPrice * quantity).toLocaleString('en-IN')
+  const isFuture = date > new Date()
 
   if (success) {
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--green)', borderRadius: 16, padding: 40, maxWidth: 480, width: '100%', textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: 16 }}>🎟️</div>
-          <h2 style={{ fontFamily: 'Syne', fontSize: '1.5rem', marginBottom: 8, color: 'var(--green)' }}>
-            Tickets purchased!
-          </h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 24, lineHeight: 1.6 }}>
-            You have <strong style={{ color: 'var(--orange)' }}>{event.gracePeriodHours} hours</strong> to add attendee IDs.
-            After that, unbound tickets will be invalidated and a {event.penaltyPercent}% penalty fee will be retained.
-          </p>
-          <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: 16, marginBottom: 24, fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'left' }}>
-            <div>Payment ref: <span style={{ color: 'var(--text)', fontFamily: 'monospace' }}>{success.purchase.paymentRef}</span></div>
-            <div style={{ marginTop: 8 }}>ID deadline: <span style={{ color: 'var(--orange)' }}>{new Date(success.purchase.idDeadline).toLocaleString('en-IN')}</span></div>
+      <div className="app-shell" style={centerStyle}>
+        <div className="panel" style={{ maxWidth: 520, width: '100%', padding: 0, overflow: 'hidden' }}>
+          {event.imageUrl ? <img src={event.imageUrl} alt={event.title} style={{ width: '100%', height: 180, objectFit: 'cover' }} /> : null}
+          <div style={{ padding: 28 }}>
+            <div className="badge badge-success" style={{ marginBottom: 14 }}>Purchase complete</div>
+            <h2 style={{ fontSize: '1.8rem', marginBottom: 8 }}>Your tickets are ready for ID binding.</h2>
+            <p className="muted" style={{ marginBottom: 20 }}>
+              Bind each ticket within {event.gracePeriodHours} hours to keep entry smooth. Cancellation keeps {event.penaltyPercent}% after the grace window.
+            </p>
+            <div className="card-soft" style={{ padding: 18, marginBottom: 20 }}>
+              <div className="muted" style={{ marginBottom: 6 }}>Payment reference</div>
+              <div style={{ fontFamily: 'monospace', marginBottom: 10 }}>{success.purchase.paymentRef}</div>
+              <div className="muted">ID deadline: {new Date(success.purchase.idDeadline).toLocaleString('en-IN')}</div>
+            </div>
+            <Link href="/tickets" className="button button-primary button-full">Go to my tickets</Link>
           </div>
-          <Link href="/tickets">
-            <button style={accentBtn}>Add IDs to my tickets →</button>
-          </Link>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <nav style={{ padding: '18px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
-        <Link href="/events" style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>← All events</Link>
-        {user && <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{user.name}</span>}
+    <div className="app-shell">
+      <nav className="topbar">
+        <Link href="/" className="brand">fair<span className="brand-accent">pass</span></Link>
+        <Link href={user ? (user.role === 'ORGANIZER' ? '/organizer/dashboard' : '/') : '/'} className="button button-secondary">
+          Back
+        </Link>
       </nav>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '48px 24px' }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <span style={chip}>📍 {event.city}</span>
-          {event.isHighDemand && <span style={{ ...chip, background: 'rgba(232,255,71,0.1)', color: 'var(--accent)', border: '1px solid rgba(232,255,71,0.3)' }}>⚡ High demand</span>}
-        </div>
+      <main className="page-container page-section">
+        <section className="hero-panel" style={{ padding: 24, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: event.imageUrl ? '340px minmax(0, 1fr)' : '1fr', gap: 24, alignItems: 'center' }}>
+            {event.imageUrl ? (
+              <img src={event.imageUrl} alt={event.title} style={{ width: '100%', height: 260, objectFit: 'cover', borderRadius: 20 }} />
+            ) : null}
 
-        <h1 style={{ fontFamily: 'Syne', fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em' }}>
-          {event.title}
-        </h1>
-
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 32 }}>
-          {event.description}
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 40 }}>
-          {[
-            { label: 'Venue', value: event.venue },
-            { label: 'City', value: event.city },
-            { label: 'Date', value: date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) },
-            { label: 'Time', value: date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) },
-            { label: 'Available', value: `${event.availableInventory} / ${event.totalInventory} tickets` },
-            { label: 'Organized by', value: event.organizer.name },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-              <div style={{ fontWeight: 500 }}>{value}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ background: 'rgba(232,255,71,0.05)', border: '1px solid rgba(232,255,71,0.2)', borderRadius: 10, padding: '16px 20px', marginBottom: 32 }}>
-          <div style={{ fontFamily: 'Syne', fontWeight: 700, color: 'var(--accent)', marginBottom: 6 }}>🪪 ID binding required</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', lineHeight: 1.6 }}>
-            Each ticket must be bound to a government ID within <strong style={{ color: 'var(--text)' }}>{event.gracePeriodHours} hours</strong> of purchase.
-            Unbound tickets will be invalidated and a <strong style={{ color: 'var(--orange)' }}>{event.penaltyPercent}% penalty fee</strong> will be retained.
-            Maximum <strong style={{ color: 'var(--text)' }}>{event.maxTicketsPerID} tickets</strong> per ID.
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 28 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div>
-              <div style={{ fontFamily: 'Syne', fontSize: '1.6rem', fontWeight: 800 }}>
-                ₹{event.ticketPrice.toLocaleString('en-IN')}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                <span className="badge badge-neutral">{viewers.toLocaleString()} viewing now</span>
+                {event.isHighDemand && <span className="badge badge-accent">High demand</span>}
+                {fewLeft && <span className="badge badge-warning">Only {event.availableInventory} left</span>}
               </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>per ticket</div>
+              <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3.1rem)', marginBottom: 12 }}>{event.title}</h1>
+              <p className="muted" style={{ marginBottom: 14 }}>
+                {event.venue}, {event.city} | {date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} | {date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+              <p className="section-copy" style={{ maxWidth: 720 }}>
+                {event.description || 'A verified ticketed experience with clear purchase, transfer, and attendee validation flows.'}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 24 }}>
+          <div style={{ display: 'grid', gap: 18 }}>
+            {isFuture && (
+              <div className="panel">
+                <div className="stat-label" style={{ marginBottom: 14 }}>Event starts in</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+                  {[
+                    ['Days', timeLeft.days],
+                    ['Hours', timeLeft.hours],
+                    ['Mins', timeLeft.mins],
+                    ['Secs', timeLeft.secs],
+                  ].map(([label, value]) => (
+                    <div key={label as string} className="card-soft" style={{ padding: 16, textAlign: 'center' }}>
+                      <div style={{ fontFamily: 'Sora', fontWeight: 700, fontSize: '1.7rem', color: 'var(--accent)' }}>{String(value).padStart(2, '0')}</div>
+                      <div className="muted" style={{ fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid-auto">
+              {[
+                ['Organized by', event.organizer.name],
+                ['Max tickets per ID', `${event.maxTicketsPerID}`],
+                ['Grace period', `${event.gracePeriodHours} hours`],
+                ['Cancellation retention', `${event.penaltyPercent}%`],
+              ].map(([label, value]) => (
+                <div key={label} className="stat-card">
+                  <div className="stat-label">{label}</div>
+                  <div className="stat-value" style={{ fontSize: '1.15rem' }}>{value}</div>
+                </div>
+              ))}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={() => setQuantity(q => Math.max(1, q - 1))} style={qtyBtn}>−</button>
-              <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1.1rem', minWidth: 20, textAlign: 'center' }}>{quantity}</span>
-              <button onClick={() => setQuantity(q => Math.min(event.maxTicketsPerID, event.availableInventory, q + 1))} style={qtyBtn}>+</button>
+            <div className="panel">
+              <h2 style={{ fontSize: '1.35rem', marginBottom: 10 }}>Entry policy</h2>
+              <p className="muted">
+                Each ticket must be linked to a government ID after purchase. Transfers stay locked to face value, which keeps resale fair while still allowing genuine fans to pass tickets on.
+              </p>
             </div>
           </div>
 
-          {error && (
-            <div style={{ background: 'rgba(255,71,87,0.1)', border: '1px solid var(--red)', borderRadius: 8, padding: '10px 14px', color: 'var(--red)', fontSize: '0.875rem', marginBottom: 16 }}>
-              {error}
+          <aside style={{ position: 'sticky', top: 92, alignSelf: 'start' }}>
+            <div className="panel">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <div className="stat-label">Ticket price</div>
+                  <div style={{ fontFamily: 'Sora', fontSize: '2rem', fontWeight: 700 }}>Rs {event.ticketPrice.toLocaleString('en-IN')}</div>
+                </div>
+                <div className={soldOut ? 'badge badge-danger' : 'badge badge-accent'}>
+                  {soldOut ? 'Sold out' : `${Math.round(fillPct)}% sold`}
+                </div>
+              </div>
+
+              <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', marginBottom: 16 }}>
+                <div style={{ height: '100%', width: `${Math.min(fillPct, 100)}%`, background: 'linear-gradient(90deg, var(--accent-2), var(--accent))' }} />
+              </div>
+
+              {!soldOut && (
+                <div className="card-soft" style={{ padding: 16, marginBottom: 16 }}>
+                  <div className="muted" style={{ marginBottom: 10 }}>Quantity</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button onClick={() => setQuantity(q => Math.max(1, q - 1))} className="button button-secondary" style={{ minWidth: 42 }}>-</button>
+                    <div style={{ minWidth: 44, textAlign: 'center', fontFamily: 'Sora', fontWeight: 700, fontSize: '1.15rem' }}>{quantity}</div>
+                    <button onClick={() => setQuantity(q => Math.min(event.maxTicketsPerID, event.availableInventory, q + 1))} className="button button-secondary" style={{ minWidth: 42 }}>+</button>
+                    <span className="muted" style={{ fontSize: '0.84rem' }}>Max {event.maxTicketsPerID}</span>
+                  </div>
+                </div>
+              )}
+
+              {quantity > 1 && !soldOut && (
+                <div className="card-soft" style={{ padding: 16, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">Total</span>
+                  <strong>Rs {total}</strong>
+                </div>
+              )}
+
+              {error && <div className="badge badge-danger" style={{ marginBottom: 14, width: '100%', justifyContent: 'center', padding: '10px 12px' }}>{error}</div>}
+
+              <button onClick={handlePurchase} disabled={purchasing || soldOut} className="button button-primary button-full" style={{ minHeight: 52, marginBottom: 12 }}>
+                {purchasing ? 'Processing...' : soldOut ? 'Sold out' : `Buy ${quantity > 1 ? `${quantity} tickets` : 'ticket'} | Rs ${total}`}
+              </button>
+
+              {!user && (
+                <p className="muted" style={{ fontSize: '0.84rem', marginBottom: 14, textAlign: 'center' }}>
+                  You&apos;ll be asked to <Link href="/login" className="text-accent">log in</Link> before checkout.
+                </p>
+              )}
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                {[
+                  `${event.availableInventory.toLocaleString('en-IN')} tickets currently available`,
+                  `${event.gracePeriodHours} hours to bind each ticket`,
+                  'Face-value transfers only',
+                ].map(item => (
+                  <div key={item} className="card-soft" style={{ padding: 14 }}>
+                    <span className="muted">{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-
-          <button
-            onClick={handlePurchase}
-            disabled={purchasing || event.availableInventory === 0}
-            style={{ ...accentBtn, width: '100%', padding: '14px', fontSize: '1rem', opacity: (purchasing || event.availableInventory === 0) ? 0.6 : 1 }}
-          >
-            {purchasing ? 'Processing...' : event.availableInventory === 0 ? 'Sold out' : `Buy ${quantity} ticket${quantity > 1 ? 's' : ''} · ₹${total}`}
-          </button>
-
-          {!user && (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', marginTop: 12 }}>
-              You'll be asked to <Link href="/login" style={{ color: 'var(--accent)' }}>log in</Link> before purchasing
-            </p>
-          )}
-        </div>
-      </div>
+          </aside>
+        </section>
+      </main>
     </div>
   )
 }
 
-const chip: React.CSSProperties = {
-  background: 'var(--surface-2)',
-  color: 'var(--text-muted)',
-  border: '1px solid var(--border)',
-  borderRadius: 100,
-  padding: '4px 12px',
-  fontSize: '0.8rem',
-  fontWeight: 500,
-}
-
-const accentBtn: React.CSSProperties = {
-  background: 'var(--accent)',
-  color: '#0a0a0f',
-  border: 'none',
-  borderRadius: 8,
-  fontFamily: 'Syne',
-  fontWeight: 700,
-  cursor: 'pointer',
-  display: 'block',
-  padding: '10px 20px',
-}
-
-const qtyBtn: React.CSSProperties = {
-  background: 'var(--surface-2)',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
-  borderRadius: 8,
-  width: 36,
-  height: 36,
-  cursor: 'pointer',
-  fontFamily: 'Syne',
-  fontWeight: 700,
-  fontSize: '1.1rem',
+const centerStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 24,
 }

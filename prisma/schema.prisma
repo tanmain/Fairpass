@@ -110,6 +110,7 @@ model Purchase {
 
   idDeadline      DateTime
   penaltyApplied  Boolean   @default(false)
+  reminderSentAt  DateTime?
 
   user            User      @relation(fields: [userId], references: [id])
   event           Event     @relation(fields: [eventId], references: [id])

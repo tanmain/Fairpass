@@ -10,14 +10,11 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "npx prisma db seed",
-    "worker": "ts-node --compiler-options {\"module\":\"CommonJS\"} src/worker/penaltyWorker.ts"
+    "db:seed": "npx prisma db seed"
   },
   "dependencies": {
     "@prisma/client": "^5.11.0",
     "bcryptjs": "^2.4.3",
-    "bullmq": "^5.4.2",
-    "ioredis": "^5.3.2",
     "jsonwebtoken": "^9.0.2",
     "next": "14.1.4",
     "next-auth": "^4.24.7",
@@ -38,7 +35,6 @@
     "postcss": "^8",
     "prisma": "^5.11.0",
     "tailwindcss": "^3.3.0",
-    "ts-node": "^10.9.2",
     "typescript": "^5"
   },
   "prisma": {

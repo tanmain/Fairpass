@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth'
 import { purchaseTickets, getUserTickets } from '@/lib/ticketService'
-import { schedulePenaltyJob, scheduleReminderJob } from '@/worker/penaltyWorker'
 import { z } from 'zod'
 
 const PurchaseSchema = z.object({
@@ -21,23 +20,6 @@ export async function POST(req: NextRequest) {
       eventId,
       quantity,
     })
-
-    const delayMs = event.gracePeriodHours * 60 * 60 * 1000
-    try {
-      await schedulePenaltyJob(purchase.id, delayMs)
-    } catch (redisErr) {
-      console.warn('[Tickets] Could not schedule penalty job (Redis unavailable?):', redisErr)
-    }
-
-    // Schedule 1 hour reminder (grace period minus 1 hour)
-    const reminderDelayMs = delayMs - 60 * 60 * 1000
-    if (reminderDelayMs > 0) {
-      try {
-        await scheduleReminderJob(purchase.id, reminderDelayMs)
-      } catch (redisErr) {
-        console.warn('[Tickets] Could not schedule reminder job:', redisErr)
-      }
-    }
 
     // Send purchase confirmation email
     try {

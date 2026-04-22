@@ -37,6 +37,7 @@ export default function TicketsPage() {
   const [bindForm, setBindForm] = useState({ attendeeName: '', idType: 'AADHAAR', idNumber: '' })
   const [bindError, setBindError] = useState('')
   const [bindLoading, setBindLoading] = useState(false)
+  const [filter, setFilter] = useState<string>('all')
 
   useEffect(() => {
     Promise.all([
@@ -130,6 +131,10 @@ export default function TicketsPage() {
   const activeCount = tickets.filter(ticket => ['PENDING_ID', 'BOUND'].includes(getEffectiveStatus(ticket))).length
   const readyForQrCount = tickets.filter(ticket => getEffectiveStatus(ticket) === 'BOUND').length
 
+  const filteredTickets = filter === 'all'
+    ? tickets
+    : tickets.filter(t => getEffectiveStatus(t) === filter)
+
   return (
     <div className="app-shell">
       <nav className="topbar">
@@ -172,27 +177,60 @@ export default function TicketsPage() {
             <Link href="/events" className="button button-primary">Browse events</Link>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 18 }}>
-            {tickets.map(ticket => (
-              <TicketCard
-                key={ticket.id}
-                ticket={ticket}
-                isBinding={bindingId === ticket.id}
-                bindForm={bindForm}
-                bindError={bindError}
-                bindLoading={bindLoading}
-                qrLoading={qrLoading === ticket.id}
-                onStartBind={() => { setBindingId(ticket.id); setBindError('') }}
-                onCancelBind={() => setBindingId(null)}
-                onBind={() => handleBind(ticket.id)}
-                onFormChange={setBindForm}
-                onShowQR={() => showQR(ticket.id)}
-                onCancelTicket={() => setCancelModal(ticket)}
-                onTransfer={() => handleTransfer(ticket.id)}
-                transferLoading={transferLoading === ticket.id}
-              />
-            ))}
-          </div>
+          <>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'PENDING_ID', label: 'Needs ID' },
+                { key: 'BOUND', label: 'Ready' },
+                { key: 'INVALID', label: 'Expired' },
+                { key: 'REFUNDED', label: 'Refunded' },
+                { key: 'USED', label: 'Used' },
+              ].map(({ key, label }) => {
+                const count = key === 'all' ? tickets.length : tickets.filter(t => getEffectiveStatus(t) === key).length
+                if (count === 0 && key !== 'all') return null
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(key)}
+                    className={`button ${filter === key ? 'button-primary' : 'button-secondary'}`}
+                    style={{ padding: '4px 14px', fontSize: '0.85rem', minHeight: 32 }}
+                  >
+                    {label}
+                    <span style={{ marginLeft: 7, opacity: 0.65, fontWeight: 400 }}>{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {filteredTickets.length === 0 ? (
+              <div className="panel" style={{ textAlign: 'center' }}>
+                <p className="muted">No tickets in this category.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 18 }}>
+                {filteredTickets.map(ticket => (
+                  <TicketCard
+                    key={ticket.id}
+                    ticket={ticket}
+                    isBinding={bindingId === ticket.id}
+                    bindForm={bindForm}
+                    bindError={bindError}
+                    bindLoading={bindLoading}
+                    qrLoading={qrLoading === ticket.id}
+                    onStartBind={() => { setBindingId(ticket.id); setBindError('') }}
+                    onCancelBind={() => setBindingId(null)}
+                    onBind={() => handleBind(ticket.id)}
+                    onFormChange={setBindForm}
+                    onShowQR={() => showQR(ticket.id)}
+                    onCancelTicket={() => setCancelModal(ticket)}
+                    onTransfer={() => handleTransfer(ticket.id)}
+                    transferLoading={transferLoading === ticket.id}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
 

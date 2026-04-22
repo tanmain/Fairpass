@@ -1,6 +1,7 @@
 import { prisma } from './prisma'
 import { createQRToken, hashIDForEvent } from './auth'
 import { TicketStatus } from '@prisma/client'
+import { createRazorpayRefund } from './razorpay'
 
 // ─── Purchase tickets ─────────────────────────────────────────────────────────
 
@@ -168,6 +169,18 @@ export async function applyGracePeriodPenalty(purchaseId: string) {
       },
     }),
   ])
+
+  // Issue Razorpay refund if payment was made via Razorpay
+  if (purchase.razorpayPaymentId && refundAmount > 0) {
+    try {
+      await createRazorpayRefund(
+        purchase.razorpayPaymentId,
+        Math.round(refundAmount * 100)
+      )
+    } catch (refundErr) {
+      console.error(`[GracePenalty] Razorpay refund failed for purchase ${purchaseId}:`, refundErr)
+    }
+  }
 
   return { penaltyApplied: totalPenalty, refundAmount, invalidatedTickets: unboundTickets.length }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { TicketStatus } from '@prisma/client'
+import { createRazorpayRefund } from '@/lib/razorpay'
 
 export async function POST(
   req: NextRequest,
@@ -47,6 +48,19 @@ export async function POST(
         },
       }),
     ])
+
+    // Issue Razorpay refund if payment was made via Razorpay
+    if (ticket.purchase.razorpayPaymentId) {
+      try {
+        await createRazorpayRefund(
+          ticket.purchase.razorpayPaymentId,
+          Math.round(refundAmount * 100) // convert to paise
+        )
+      } catch (refundErr) {
+        console.error('[CancelTicket] Razorpay refund failed:', refundErr)
+        // Don't block the cancellation — refund can be retried manually
+      }
+    }
 
     return NextResponse.json({
       ok: true,

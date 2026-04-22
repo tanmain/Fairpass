@@ -3,6 +3,20 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
+function loadRazorpayScript(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).Razorpay) {
+      resolve((window as any).Razorpay)
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = () => resolve((window as any).Razorpay)
+    script.onerror = () => reject(new Error('Failed to load Razorpay'))
+    document.body.appendChild(script)
+  })
+}
+
 type Event = {
   id: string
   title: string
@@ -78,18 +92,70 @@ export default function EventDetailPage({ params }: { params: { eventId: string 
     }
     setPurchasing(true)
     setError('')
-    const res = await fetch('/api/tickets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId: event!.id, quantity }),
-    })
-    const data = await res.json()
-    setPurchasing(false)
-    if (!res.ok) {
-      setError(data.error || 'Purchase failed')
-      return
+
+    try {
+      // Step 1: Create Razorpay order
+      const orderRes = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'PRIMARY_PURCHASE', eventId: event!.id, quantity }),
+      })
+      const orderData = await orderRes.json()
+      if (!orderRes.ok) {
+        setError(orderData.error || 'Failed to create order')
+        setPurchasing(false)
+        return
+      }
+
+      // Step 2: Load Razorpay and open checkout
+      const Razorpay = await loadRazorpayScript()
+      const rzp = new Razorpay({
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        order_id: orderData.orderId,
+        name: 'FairPass',
+        description: `${quantity} ticket${quantity > 1 ? 's' : ''} for ${event!.title}`,
+        theme: { color: '#e8ff47' },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          // Step 3: Verify payment
+          try {
+            const verifyRes = await fetch('/api/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            })
+            const verifyData = await verifyRes.json()
+            setPurchasing(false)
+            if (!verifyRes.ok) {
+              setError(verifyData.error || 'Payment verification failed')
+              return
+            }
+            setSuccess(verifyData)
+          } catch {
+            setPurchasing(false)
+            setError('Payment verification failed. Please contact support.')
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setPurchasing(false)
+          },
+        },
+        prefill: {
+          name: user.name,
+          email: user.email,
+        },
+      })
+      rzp.open()
+    } catch (err: any) {
+      setPurchasing(false)
+      setError(err.message || 'Something went wrong')
     }
-    setSuccess(data)
   }
 
   if (loading) return <div className="app-shell" style={centerStyle}><span className="muted">Loading event...</span></div>

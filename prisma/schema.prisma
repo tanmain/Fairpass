@@ -43,6 +43,17 @@ enum ResaleMode {
   PUBLIC
 }
 
+enum PaymentType {
+  PRIMARY_PURCHASE
+  RESALE_PURCHASE
+}
+
+enum PaymentOrderStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -58,6 +69,7 @@ model User {
   resaleListings    ResaleListing[] @relation("ResaleListings")
   resaleTargets     ResaleListing[] @relation("ResaleTargets")
   resalePurchases   ResaleListing[] @relation("ResalePurchases")
+  paymentOrders     PaymentOrder[]
 
   @@map("users")
 }
@@ -106,6 +118,7 @@ model Purchase {
   refundAmount    Float?
 
   paymentRef      String    @default(cuid())
+  razorpayPaymentId String?
   paidAt          DateTime  @default(now())
 
   idDeadline      DateTime
@@ -178,6 +191,30 @@ model ResaleListing {
   updatedAt       DateTime            @updatedAt
 
   @@map("resale_listings")
+}
+
+model PaymentOrder {
+  id                String             @id @default(cuid())
+  razorpayOrderId   String             @unique
+  userId            String
+  type              PaymentType
+  amountPaise       Int
+  status            PaymentOrderStatus @default(PENDING)
+
+  eventId           String?
+  quantity          Int?
+  listingId         String?
+
+  razorpayPaymentId String?
+  razorpaySignature String?
+  purchaseId        String?
+
+  user              User               @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@map("payment_orders")
 }
 
 model EventIDUsage {

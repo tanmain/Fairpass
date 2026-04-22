@@ -3,6 +3,20 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 
+function loadRazorpayScript(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).Razorpay) {
+      resolve((window as any).Razorpay)
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = () => resolve((window as any).Razorpay)
+    script.onerror = () => reject(new Error('Failed to load Razorpay'))
+    document.body.appendChild(script)
+  })
+}
+
 const ID_TYPES = [
   { value: 'AADHAAR', label: 'Aadhaar Card' },
   { value: 'PASSPORT', label: 'Passport' },
@@ -62,18 +76,69 @@ export default function ClaimPage() {
   async function handleClaim() {
     setPurchaseLoading(true)
     setPurchaseError('')
-    const res = await fetch('/api/resale/purchase', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listingId, ...form }),
-    })
-    const data = await res.json()
-    setPurchaseLoading(false)
-    if (!res.ok) {
-      setPurchaseError(data.error)
-      return
+
+    try {
+      // Step 1: Create Razorpay order
+      const orderRes = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'RESALE_PURCHASE', listingId }),
+      })
+      const orderData = await orderRes.json()
+      if (!orderRes.ok) {
+        setPurchaseError(orderData.error || 'Failed to create order')
+        setPurchaseLoading(false)
+        return
+      }
+
+      // Step 2: Open Razorpay checkout
+      const Razorpay = await loadRazorpayScript()
+      const rzp = new Razorpay({
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        order_id: orderData.orderId,
+        name: 'FairPass',
+        description: `Resale ticket for ${listing!.ticket.event.title}`,
+        theme: { color: '#e8ff47' },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          // Step 3: Verify payment with ID details
+          try {
+            const verifyRes = await fetch('/api/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+                attendeeName: form.attendeeName,
+                idType: form.idType,
+                idNumber: form.idNumber,
+              }),
+            })
+            const verifyData = await verifyRes.json()
+            setPurchaseLoading(false)
+            if (!verifyRes.ok) {
+              setPurchaseError(verifyData.error || 'Payment verification failed')
+              return
+            }
+            setSuccess(true)
+          } catch {
+            setPurchaseLoading(false)
+            setPurchaseError('Payment verification failed. Please contact support.')
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setPurchaseLoading(false)
+          },
+        },
+      })
+      rzp.open()
+    } catch (err: any) {
+      setPurchaseLoading(false)
+      setPurchaseError(err.message || 'Something went wrong')
     }
-    setSuccess(true)
   }
 
   const expired = listing ? new Date() > new Date(listing.expiresAt) : false

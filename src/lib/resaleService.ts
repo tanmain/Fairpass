@@ -91,6 +91,7 @@ export async function purchaseResaleListing({
   idType: string
   idNumber: string
 }) {
+  // Pre-validate outside transaction for fast rejection
   const listing = await prisma.resaleListing.findUniqueOrThrow({
     where: { id: listingId },
     include: { ticket: { include: { event: true } } },
@@ -127,14 +128,23 @@ export async function purchaseResaleListing({
   const buyerPaymentRef = `RESALE-BUY-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
   const sellerPayoutRef = `RESALE-PAY-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
-  await prisma.$transaction([
-    prisma.eventIDUsage.deleteMany({
+  // Use interactive transaction to prevent race conditions (double-purchase)
+  await prisma.$transaction(async (tx) => {
+    // Re-check listing is still ACTIVE inside the transaction
+    const freshListing = await tx.resaleListing.findUniqueOrThrow({
+      where: { id: listingId },
+    })
+    if (freshListing.status !== ResaleListingStatus.ACTIVE) {
+      throw new Error('LISTING_NOT_ACTIVE')
+    }
+
+    await tx.eventIDUsage.deleteMany({
       where: { eventId: ticket.eventId, idNumber: oldIdHash },
-    }),
-    prisma.eventIDUsage.create({
+    })
+    await tx.eventIDUsage.create({
       data: { eventId: ticket.eventId, idNumber: idHash },
-    }),
-    prisma.ticket.update({
+    })
+    await tx.ticket.update({
       where: { id: ticket.id },
       data: {
         userId: buyerId,
@@ -148,16 +158,16 @@ export async function purchaseResaleListing({
         transferCount: { increment: 1 },
         lastTransferAt: new Date(),
       },
-    }),
-    prisma.resaleListing.update({
+    })
+    await tx.resaleListing.update({
       where: { id: listingId },
       data: {
         status: ResaleListingStatus.SOLD,
         buyerId,
         purchasedAt: new Date(),
       },
-    }),
-  ])
+    })
+  })
 
   return {
     eventTitle: ticket.event.title,
@@ -240,15 +250,16 @@ export async function getResaleListing(listingId: string, userId?: string) {
     },
   })
 
-  if (listing.status === ResaleListingStatus.ACTIVE && new Date() > listing.expiresAt) {
-    await expireListingIfNeeded(listing.id)
-    return { ...listing, status: ResaleListingStatus.EXPIRED }
-  }
-
+  // Check access control FIRST (before expiry check to prevent information leak)
   if (listing.mode === ResaleMode.PRIVATE) {
     if (userId !== listing.sellerId && userId !== listing.targetBuyerId) {
       throw new Error('FORBIDDEN')
     }
+  }
+
+  if (listing.status === ResaleListingStatus.ACTIVE && new Date() > listing.expiresAt) {
+    await expireListingIfNeeded(listing.id)
+    return { ...listing, status: ResaleListingStatus.EXPIRED }
   }
 
   return listing

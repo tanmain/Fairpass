@@ -128,7 +128,18 @@ export default function TicketsPage() {
       setResaleError(data.error)
       return
     }
-    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: 'LISTED' } : t))
+    setTickets(prev => prev.map(t => t.id === ticketId ? {
+      ...t,
+      status: 'LISTED',
+      resaleListings: [{
+        id: data.listing.id,
+        mode: resaleMode,
+        status: 'ACTIVE',
+        faceValue: data.listing.faceValue,
+        sellerPayout: data.listing.sellerPayout,
+        expiresAt: data.listing.expiresAt,
+      }]
+    } : t))
     setResaleSuccess({
       mode: resaleMode,
       faceValue: data.listing.faceValue,
@@ -294,7 +305,7 @@ export default function TicketsPage() {
               <Row label="Refund amount" value={`Rs ${(cancelModal.event.ticketPrice * (1 - cancelModal.event.penaltyPercent / 100)).toLocaleString('en-IN')}`} />
             </div>
             <div className="card-soft" style={{ padding: 14, marginBottom: 18 }}>
-              <span className="muted">Consider transferring instead if you want to avoid the cancellation penalty.</span>
+              <span className="muted">Consider reselling instead if you want to avoid the cancellation penalty.</span>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => handleCancel(cancelModal.id)} disabled={cancelLoading} className="button button-danger" style={{ flex: 1 }}>

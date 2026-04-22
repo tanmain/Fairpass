@@ -42,6 +42,8 @@ export default function TicketsPage() {
   const [cancelResult, setCancelResult] = useState<{ penaltyAmount: number; refundAmount: number } | null>(null)
   const [qrModal, setQrModal] = useState<{ dataURL: string; attendeeName: string; eventTitle: string; idType: string } | null>(null)
   const [qrLoading, setQrLoading] = useState<string | null>(null)
+  const [transferLoading, setTransferLoading] = useState<string | null>(null)
+  const [transferModal, setTransferModal] = useState<{ code: string; expiresAt: string } | null>(null)
   const [bindForm, setBindForm] = useState({ attendeeName: '', idType: 'AADHAAR', idNumber: '' })
   const [bindError, setBindError] = useState('')
   const [bindLoading, setBindLoading] = useState(false)
@@ -111,6 +113,15 @@ export default function TicketsPage() {
     })
   }
 
+  async function handleTransfer(ticketId: string) {
+  setTransferLoading(ticketId)
+  const res = await fetch(`/api/tickets/${ticketId}/transfer`, { method: 'POST' })
+  const data = await res.json()
+  setTransferLoading(null)
+  if (!res.ok) return
+  setTransferModal({ code: data.transferCode, expiresAt: data.expiresAt })
+}
+
   function downloadQR() {
     if (!qrModal) return
     const link = document.createElement('a')
@@ -169,6 +180,8 @@ export default function TicketsPage() {
                 onFormChange={setBindForm}
                 onShowQR={() => showQR(ticket.id)}
                 onCancelTicket={() => setCancelModal(ticket)}
+                onTransfer={() => handleTransfer(ticket.id)}
+                transferLoading={transferLoading === ticket.id}
               />
             ))}
           </div>
@@ -252,6 +265,53 @@ export default function TicketsPage() {
         </div>
       )}
 
+      {/* Transfer code modal */}
+{transferModal && (
+  <div
+    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
+    onClick={() => setTransferModal(null)}
+  >
+    <div
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, maxWidth: 400, width: '100%', textAlign: 'center' }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div style={{ fontSize: '2rem', marginBottom: 12 }}>↔️</div>
+      <h3 style={{ fontFamily: 'Syne', fontSize: '1.2rem', marginBottom: 8 }}>Transfer code generated</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 24, lineHeight: 1.6 }}>
+        Share this code with the buyer. It expires in 24 hours and can only be used once.
+      </p>
+
+      <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '24px 16px', marginBottom: 16 }}>
+  <div style={{ fontFamily: 'Syne', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
+    <div style={{ fontSize: '2.5rem', letterSpacing: '0.3em' }}>{transferModal.code.slice(0, 4)}</div>
+    <div style={{ color: 'var(--border)', fontSize: '1rem', margin: '4px 0' }}>· · · ·</div>
+    <div style={{ fontSize: '2.5rem', letterSpacing: '0.3em' }}>{transferModal.code.slice(4)}</div>
+  </div>
+</div>
+
+      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 24 }}>
+        Expires: {new Date(transferModal.expiresAt).toLocaleString('en-IN')}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={() => { navigator.clipboard.writeText(transferModal.code) }}
+          style={{ ...accentBtn, flex: 1, padding: '11px' }}
+        >
+          Copy code
+        </button>
+        <button onClick={() => setTransferModal(null)} style={{ ...ghostBtn, flex: 1 }}>
+          Close
+        </button>
+      </div>
+
+      <div style={{ marginTop: 20, padding: '12px', background: 'rgba(232,255,71,0.05)', border: '1px solid rgba(232,255,71,0.2)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        Buyer redeems at: <strong style={{ color: 'var(--accent)' }}>localhost:3000/transfer</strong>
+      </div>
+    </div>
+  </div>
+)}
+
       {/* QR Modal */}
       {qrModal && (
         <div
@@ -281,7 +341,7 @@ export default function TicketsPage() {
   )
 }
 
-function TicketCard({ ticket, isBinding, bindForm, bindError, bindLoading, qrLoading, onStartBind, onCancelBind, onBind, onFormChange, onShowQR, onCancelTicket }: any) {
+function TicketCard({ ticket, isBinding, bindForm, bindError, bindLoading, qrLoading, onStartBind, onCancelBind, onBind, onFormChange, onShowQR, onCancelTicket, onTransfer, transferLoading }: any) {
   const deadline = new Date(ticket.purchase.idDeadline)
   const now = new Date()
   const expired = now > deadline
@@ -367,9 +427,13 @@ function TicketCard({ ticket, isBinding, bindForm, bindError, bindLoading, qrLoa
             <button onClick={onShowQR} disabled={qrLoading} style={{ ...ghostBtn, opacity: qrLoading ? 0.6 : 1 }}>
               {qrLoading ? 'Loading...' : '🔲 View QR'}
             </button>
-            <button style={{ background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 16px', fontFamily: 'Syne', fontWeight: 600, fontSize: '0.875rem', cursor: 'not-allowed', opacity: 0.5 }}>
-              Transfer (coming soon)
-            </button>
+            <button
+              onClick={onTransfer}
+              disabled={transferLoading}
+              style={{ ...ghostBtn, opacity: transferLoading ? 0.6 : 1 }}
+            >
+              {transferLoading ? 'Generating...' : '↔ Transfer'}
+          </button>
           </div>
         </div>
       )}

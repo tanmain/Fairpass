@@ -123,6 +123,10 @@ model Ticket {
   maxTransfers    Int         @default(1)
   lastTransferAt  DateTime?
 
+  transferCode          String?   @unique
+  transferCodeExpiresAt DateTime?
+  transferCodeUsed      Boolean   @default(false)
+
   purchase      Purchase      @relation(fields: [purchaseId], references: [id])
   event         Event         @relation(fields: [eventId], references: [id])
   user          User          @relation(fields: [userId], references: [id])

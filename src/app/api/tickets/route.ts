@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth'
 import { purchaseTickets, getUserTickets } from '@/lib/ticketService'
-import { schedulePenaltyJob } from '@/worker/penaltyWorker'
+import { schedulePenaltyJob, scheduleReminderJob } from '@/worker/penaltyWorker'
 import { z } from 'zod'
 
 const PurchaseSchema = z.object({
@@ -27,6 +27,38 @@ export async function POST(req: NextRequest) {
       await schedulePenaltyJob(purchase.id, delayMs)
     } catch (redisErr) {
       console.warn('[Tickets] Could not schedule penalty job (Redis unavailable?):', redisErr)
+    }
+
+    // Schedule 1 hour reminder (grace period minus 1 hour)
+    const reminderDelayMs = delayMs - 60 * 60 * 1000
+    if (reminderDelayMs > 0) {
+      try {
+        await scheduleReminderJob(purchase.id, reminderDelayMs)
+      } catch (redisErr) {
+        console.warn('[Tickets] Could not schedule reminder job:', redisErr)
+      }
+    }
+
+    // Send purchase confirmation email
+    try {
+      const user = await import('@/lib/prisma').then(m => m.prisma.user.findUnique({ where: { id: session.userId } }))
+      if (user) {
+        await import('@/lib/emailService').then(m => m.sendPurchaseConfirmation({
+          to: user.email,
+          name: user.name,
+          eventTitle: event.title,
+          eventDate: event.eventDate.toISOString(),
+          eventVenue: event.venue,
+          quantity,
+          totalAmount: purchase.totalAmount,
+          paymentRef: purchase.paymentRef,
+          idDeadline: purchase.idDeadline.toISOString(),
+          gracePeriodHours: event.gracePeriodHours,
+          penaltyPercent: event.penaltyPercent,
+        }))
+      }
+    } catch (emailErr) {
+      console.warn('[Tickets] Could not send confirmation email:', emailErr)
     }
 
     return NextResponse.json(

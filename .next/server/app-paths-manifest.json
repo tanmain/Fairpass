@@ -1,0 +1,15 @@
+{
+  "/page": "app/page.js",
+  "/login/page": "app/login/page.js",
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/api/tickets/route": "app/api/tickets/route.js",
+  "/tickets/page": "app/tickets/page.js",
+  "/events/page": "app/events/page.js",
+  "/events/[eventId]/page": "app/events/[eventId]/page.js",
+  "/api/events/[id]/route": "app/api/events/[id]/route.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/api/events/route": "app/api/events/route.js",
+  "/organizer/dashboard/page": "app/organizer/dashboard/page.js",
+  "/organizer/events/new/page": "app/organizer/events/new/page.js",
+  "/api/tickets/[id]/cancel/route": "app/api/tickets/[id]/cancel/route.js"
+}

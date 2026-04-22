@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ATTENDEE
+  ORGANIZER
+  ADMIN
+}
+
+enum TicketStatus {
+  PENDING_ID
+  BOUND
+  INVALID
+  TRANSFERRED
+  USED
+  REFUNDED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  SOLD_OUT
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          UserRole  @default(ATTENDEE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  organizedEvents Event[]
+  purchases       Purchase[]
+  tickets         Ticket[]
+
+  @@map("users")
+}
+
+model Event {
+  id                  String      @id @default(cuid())
+  title               String
+  description         String?
+  venue               String
+  city                String
+  eventDate           DateTime
+  status              EventStatus @default(DRAFT)
+
+  totalInventory      Int
+  availableInventory  Int
+  ticketPrice         Float
+  maxTicketsPerID     Int         @default(2)
+
+  gracePeriodHours    Int         @default(6)
+  lowDemandHours      Int         @default(48)
+  penaltyPercent      Float       @default(20)
+
+  isHighDemand        Boolean     @default(false)
+
+  organizerId         String
+  organizer           User        @relation(fields: [organizerId], references: [id])
+
+  purchases           Purchase[]
+  tickets             Ticket[]
+
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@map("events")
+}
+
+model Purchase {
+  id              String    @id @default(cuid())
+  userId          String
+  eventId         String
+  quantity        Int
+  totalAmount     Float
+  penaltyRetained Float?
+  refundAmount    Float?
+
+  paymentRef      String    @default(cuid())
+  paidAt          DateTime  @default(now())
+
+  idDeadline      DateTime
+  penaltyApplied  Boolean   @default(false)
+
+  user            User      @relation(fields: [userId], references: [id])
+  event           Event     @relation(fields: [eventId], references: [id])
+  tickets         Ticket[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("purchases")
+}
+
+model Ticket {
+  id            String        @id @default(cuid())
+  purchaseId    String
+  eventId       String
+  userId        String
+
+  attendeeName  String?
+  idType        String?
+  idNumber      String?
+  idBoundAt     DateTime?
+
+  status        TicketStatus  @default(PENDING_ID)
+
+  qrToken       String?       @unique
+  qrGeneratedAt DateTime?
+
+  transferCount   Int         @default(0)
+  maxTransfers    Int         @default(1)
+  lastTransferAt  DateTime?
+
+  purchase      Purchase      @relation(fields: [purchaseId], references: [id])
+  event         Event         @relation(fields: [eventId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("tickets")
+}
+
+model EventIDUsage {
+  id        String   @id @default(cuid())
+  eventId   String
+  idNumber  String
+  usedAt    DateTime @default(now())
+
+  @@unique([eventId, idNumber])
+  @@map("event_id_usage")
+}

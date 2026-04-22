@@ -10,8 +10,11 @@ type Ticket = {
   idType: string | null
   idBoundAt: string | null
   qrToken: string | null
+  transferCount: number
+  maxTransfers: number
   event: { title: string; venue: string; city: string; eventDate: string; ticketPrice: number; penaltyPercent: number }
   purchase: { idDeadline: string; paymentRef: string }
+  resaleListings: { id: string; mode: string; status: string; faceValue: number; sellerPayout: number; expiresAt: string }[]
 }
 
 const ID_TYPES = [
@@ -32,8 +35,13 @@ export default function TicketsPage() {
   const [cancelResult, setCancelResult] = useState<{ penaltyAmount: number; refundAmount: number } | null>(null)
   const [qrModal, setQrModal] = useState<{ dataURL: string; attendeeName: string; eventTitle: string; idType: string } | null>(null)
   const [qrLoading, setQrLoading] = useState<string | null>(null)
-  const [transferLoading, setTransferLoading] = useState<string | null>(null)
-  const [transferModal, setTransferModal] = useState<{ code: string; expiresAt: string } | null>(null)
+  const [resaleModal, setResaleModal] = useState<string | null>(null)
+  const [resaleMode, setResaleMode] = useState<'PRIVATE' | 'PUBLIC'>('PUBLIC')
+  const [resaleEmail, setResaleEmail] = useState('')
+  const [resaleLoading, setResaleLoading] = useState(false)
+  const [resaleError, setResaleError] = useState('')
+  const [resaleSuccess, setResaleSuccess] = useState<{ mode: string; faceValue: number; platformFee: number; sellerPayout: number } | null>(null)
+  const [cancelListingLoading, setCancelListingLoading] = useState<string | null>(null)
   const [bindForm, setBindForm] = useState({ attendeeName: '', idType: 'AADHAAR', idNumber: '' })
   const [bindError, setBindError] = useState('')
   const [bindLoading, setBindLoading] = useState(false)
@@ -102,13 +110,47 @@ export default function TicketsPage() {
     setQrModal({ dataURL: data.qrDataURL, attendeeName: data.attendeeName, eventTitle: data.eventTitle, idType: data.idType })
   }
 
-  async function handleTransfer(ticketId: string) {
-    setTransferLoading(ticketId)
-    const res = await fetch(`/api/tickets/${ticketId}/transfer`, { method: 'POST' })
+  async function handleResaleList(ticketId: string) {
+    setResaleLoading(true)
+    setResaleError('')
+    const res = await fetch('/api/resale/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticketId,
+        mode: resaleMode,
+        targetBuyerEmail: resaleMode === 'PRIVATE' ? resaleEmail : undefined,
+      }),
+    })
     const data = await res.json()
-    setTransferLoading(null)
-    if (!res.ok) return
-    setTransferModal({ code: data.transferCode, expiresAt: data.expiresAt })
+    setResaleLoading(false)
+    if (!res.ok) {
+      setResaleError(data.error)
+      return
+    }
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: 'LISTED' } : t))
+    setResaleSuccess({
+      mode: resaleMode,
+      faceValue: data.listing.faceValue,
+      platformFee: data.listing.platformFee,
+      sellerPayout: data.listing.sellerPayout,
+    })
+  }
+
+  async function handleCancelListing(listingId: string) {
+    setCancelListingLoading(listingId)
+    const res = await fetch('/api/resale/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId }),
+    })
+    setCancelListingLoading(null)
+    if (res.ok) {
+      setTickets(prev => prev.map(t => {
+        const hasListing = t.resaleListings.some(l => l.id === listingId)
+        return hasListing ? { ...t, status: 'BOUND', resaleListings: [] } : t
+      }))
+    }
   }
 
   function downloadQR() {
@@ -128,7 +170,7 @@ export default function TicketsPage() {
     return <div className="app-shell" style={centerStyle}><span className="muted">Loading tickets...</span></div>
   }
 
-  const activeCount = tickets.filter(ticket => ['PENDING_ID', 'BOUND'].includes(getEffectiveStatus(ticket))).length
+  const activeCount = tickets.filter(ticket => ['PENDING_ID', 'BOUND', 'LISTED'].includes(getEffectiveStatus(ticket))).length
   const readyForQrCount = tickets.filter(ticket => getEffectiveStatus(ticket) === 'BOUND').length
 
   const filteredTickets = filter === 'all'
@@ -141,6 +183,7 @@ export default function TicketsPage() {
         <Link href="/" className="brand">fair<span className="brand-accent">pass</span></Link>
         <div className="nav-actions">
           <Link href="/events" className="button button-secondary">Browse events</Link>
+          <Link href="/resale" className="button button-secondary">Resale</Link>
           <span className="muted">{user?.name}</span>
           <button onClick={logout} className="button button-ghost">Sign out</button>
         </div>
@@ -183,6 +226,7 @@ export default function TicketsPage() {
                 { key: 'all', label: 'All' },
                 { key: 'PENDING_ID', label: 'Needs ID' },
                 { key: 'BOUND', label: 'Ready' },
+                { key: 'LISTED', label: 'Listed' },
                 { key: 'INVALID', label: 'Expired' },
                 { key: 'REFUNDED', label: 'Refunded' },
                 { key: 'USED', label: 'Used' },
@@ -224,8 +268,9 @@ export default function TicketsPage() {
                     onFormChange={setBindForm}
                     onShowQR={() => showQR(ticket.id)}
                     onCancelTicket={() => setCancelModal(ticket)}
-                    onTransfer={() => handleTransfer(ticket.id)}
-                    transferLoading={transferLoading === ticket.id}
+                    onResell={() => { setResaleModal(ticket.id); setResaleError(''); setResaleMode('PUBLIC'); setResaleEmail('') }}
+                    onCancelListing={(listingId: string) => handleCancelListing(listingId)}
+                    cancelListingLoading={cancelListingLoading === (ticket.resaleListings[0]?.id)}
                   />
                 ))}
               </div>
@@ -274,22 +319,96 @@ export default function TicketsPage() {
         </div>
       )}
 
-      {transferModal && (
-        <div className="dialog-backdrop" onClick={() => setTransferModal(null)}>
+      {resaleModal && !resaleSuccess && (
+        <div className="dialog-backdrop" onClick={() => setResaleModal(null)}>
           <div className="dialog" onClick={e => e.stopPropagation()}>
-            <div className="badge badge-cyan" style={{ marginBottom: 14 }}>Transfer code</div>
-            <h3 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Share this code with the buyer.</h3>
-            <p className="muted" style={{ marginBottom: 18 }}>The code expires in 24 hours and can only be used once.</p>
-            <div className="card-soft" style={{ padding: 22, marginBottom: 14, textAlign: 'center' }}>
-              <div style={{ fontFamily: 'Sora', fontSize: '2.1rem', fontWeight: 700, letterSpacing: '0.18em', color: 'var(--accent)' }}>
-                {transferModal.code.slice(0, 4)} {transferModal.code.slice(4)}
+            <div className="badge badge-cyan" style={{ marginBottom: 14 }}>List for resale</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Resell this ticket</h3>
+            <p className="muted" style={{ marginBottom: 18 }}>
+              Your ticket will be listed at face value. Choose who can buy it.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+              <button
+                onClick={() => setResaleMode('PUBLIC')}
+                className={`button ${resaleMode === 'PUBLIC' ? 'button-primary' : 'button-secondary'}`}
+                style={{ flex: 1 }}
+              >
+                Public
+              </button>
+              <button
+                onClick={() => setResaleMode('PRIVATE')}
+                className={`button ${resaleMode === 'PRIVATE' ? 'button-primary' : 'button-secondary'}`}
+                style={{ flex: 1 }}
+              >
+                Private
+              </button>
+            </div>
+
+            {resaleMode === 'PRIVATE' && (
+              <div style={{ marginBottom: 18 }}>
+                <label className="label">Recipient's email</label>
+                <input
+                  value={resaleEmail}
+                  onChange={e => setResaleEmail(e.target.value)}
+                  placeholder="friend@example.com"
+                  className="input"
+                  type="email"
+                />
               </div>
-            </div>
-            <p className="muted" style={{ marginBottom: 18 }}>Expires: {new Date(transferModal.expiresAt).toLocaleString('en-IN')}</p>
+            )}
+
+            {(() => {
+              const ticket = tickets.find(t => t.id === resaleModal)
+              if (!ticket) return null
+              const faceValue = ticket.event.ticketPrice
+              const platformFee = faceValue * 0.05
+              const sellerPayout = faceValue - platformFee
+              return (
+                <div className="card-soft" style={{ padding: 16, marginBottom: 18 }}>
+                  <Row label="Face value" value={`₹${faceValue.toLocaleString('en-IN')}`} />
+                  <Row label="Platform fee (5%)" value={`-₹${platformFee.toLocaleString('en-IN')}`} />
+                  <div className="divider" style={{ margin: '12px 0' }} />
+                  <Row label="Your payout" value={`₹${sellerPayout.toLocaleString('en-IN')}`} />
+                </div>
+              )
+            })()}
+
+            <p className="muted" style={{ fontSize: '0.85rem', marginBottom: 18 }}>
+              {resaleMode === 'PUBLIC'
+                ? 'Your ticket will appear on the public resale page until someone buys it or the event is within 24 hours.'
+                : 'The recipient will have 2 hours to claim this ticket.'}
+            </p>
+
+            {resaleError && <div className="badge badge-danger" style={{ width: '100%', justifyContent: 'center', padding: '12px 14px', marginBottom: 14 }}>{resaleError}</div>}
+
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => navigator.clipboard.writeText(transferModal.code)} className="button button-primary" style={{ flex: 1 }}>Copy code</button>
-              <button onClick={() => setTransferModal(null)} className="button button-secondary" style={{ flex: 1 }}>Close</button>
+              <button
+                onClick={() => handleResaleList(resaleModal)}
+                disabled={resaleLoading || (resaleMode === 'PRIVATE' && !resaleEmail)}
+                className="button button-primary"
+                style={{ flex: 1 }}
+              >
+                {resaleLoading ? 'Listing...' : 'Confirm listing'}
+              </button>
+              <button onClick={() => setResaleModal(null)} className="button button-secondary" style={{ flex: 1 }}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {resaleSuccess && (
+        <div className="dialog-backdrop" onClick={() => { setResaleSuccess(null); setResaleModal(null) }}>
+          <div className="dialog" onClick={e => e.stopPropagation()}>
+            <div className="badge badge-success" style={{ marginBottom: 14 }}>Listed!</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Ticket listed for resale</h3>
+            <p className="muted" style={{ marginBottom: 20 }}>
+              {resaleSuccess.mode === 'PUBLIC'
+                ? 'Your ticket is now visible on the resale marketplace.'
+                : 'The recipient has been notified and has 2 hours to claim it.'}
+              {' '}Your payout when sold: ₹{resaleSuccess.sellerPayout.toLocaleString('en-IN')}
+            </p>
+            <button onClick={() => { setResaleSuccess(null); setResaleModal(null) }} className="button button-primary button-full">Done</button>
           </div>
         </div>
       )}
@@ -327,8 +446,9 @@ function TicketCard({
   onFormChange,
   onShowQR,
   onCancelTicket,
-  onTransfer,
-  transferLoading,
+  onResell,
+  onCancelListing,
+  cancelListingLoading,
 }: any) {
   const deadline = new Date(ticket.purchase.idDeadline)
   const now = new Date()
@@ -340,6 +460,7 @@ function TicketCard({
   const statusClass: Record<string, string> = {
     PENDING_ID: 'badge-warning',
     BOUND: 'badge-success',
+    LISTED: 'badge-cyan',
     INVALID: 'badge-danger',
     USED: 'badge-neutral',
     TRANSFERRED: 'badge-neutral',
@@ -395,8 +516,29 @@ function TicketCard({
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button onClick={onShowQR} disabled={qrLoading} className="button button-secondary">{qrLoading ? 'Loading QR...' : 'View QR'}</button>
-            <button onClick={onTransfer} disabled={transferLoading} className="button button-secondary">{transferLoading ? 'Generating...' : 'Transfer'}</button>
+            {ticket.transferCount < ticket.maxTransfers && (
+              <button onClick={onResell} className="button button-secondary">Resell</button>
+            )}
           </div>
+        </div>
+      )}
+
+      {effectiveStatus === 'LISTED' && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="card-soft" style={{ padding: 14, flex: 1 }}>
+            <span className="badge badge-cyan" style={{ marginRight: 10 }}>Listed for resale</span>
+            <span className="muted">
+              {ticket.resaleListings[0]?.mode === 'PRIVATE' ? 'Private listing' : 'Public listing'}
+              {' · '}Payout: ₹{ticket.resaleListings[0]?.sellerPayout.toLocaleString('en-IN')}
+            </span>
+          </div>
+          <button
+            onClick={() => onCancelListing(ticket.resaleListings[0]?.id)}
+            disabled={cancelListingLoading}
+            className="button button-danger"
+          >
+            {cancelListingLoading ? 'Cancelling...' : 'Cancel listing'}
+          </button>
         </div>
       )}
 

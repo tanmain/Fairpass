@@ -180,6 +180,10 @@ export async function getUserTickets(userId: string) {
     include: {
       event: { select: { title: true, venue: true, city: true, eventDate: true, ticketPrice: true, penaltyPercent: true } },
       purchase: { select: { idDeadline: true, paymentRef: true } },
+      resaleListings: {
+        where: { status: 'ACTIVE' },
+        select: { id: true, mode: true, status: true, faceValue: true, sellerPayout: true, expiresAt: true },
+      },
     },
     orderBy: { createdAt: 'desc' },
   })

@@ -91,11 +91,13 @@ export default function EventsPage() {
               >
                 {user.role === 'ORGANIZER' ? 'Organizer hub' : 'My tickets'}
               </Link>
+              <Link href="/resale" className="button button-secondary">Resale</Link>
               <span className="muted">{user.name}</span>
               <button onClick={logout} className="button button-ghost">Sign out</button>
             </>
           ) : (
             <>
+              <Link href="/resale" className="button button-secondary">Resale</Link>
               <Link href="/login" className="button button-secondary">Log in</Link>
               <Link href="/register" className="button button-primary">Create account</Link>
             </>

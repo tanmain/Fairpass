@@ -60,7 +60,7 @@ Relations: listing belongs to ticket, seller, targetBuyer (optional), buyer (opt
 ### Changes to Ticket model
 
 **Add:**
-- `resaleListingId` — nullable FK to `ResaleListing`. Set when actively listed, cleared on sale/expiry/cancel.
+- `resaleListings ResaleListing[]` — Prisma back-relation. A ticket can have multiple listings over its lifetime (e.g., sold via resale, new owner lists again). Query with `where: { status: 'ACTIVE' }` to find the current listing.
 
 **Add to TicketStatus enum:**
 - `LISTED` — prevents a listed ticket from being used at entry.
@@ -148,7 +148,7 @@ Executes the resale transaction.
 **Atomic transaction:**
 1. Void old QR token, remove old EventIDUsage
 2. Bind new buyer's ID (hash it), generate new QR token
-3. Update ticket: new `userId`, status back to `BOUND`, increment `transferCount`, set `lastTransferAt`, clear `resaleListingId`
+3. Update ticket: new `userId`, status back to `BOUND`, increment `transferCount`, set `lastTransferAt`, listing status updated
 4. Update listing: status to `SOLD`, set `buyerId` and `purchasedAt`
 5. Generate stubbed payment refs for buyer charge and seller payout
 

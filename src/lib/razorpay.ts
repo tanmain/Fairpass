@@ -1,13 +1,20 @@
 import Razorpay from 'razorpay'
 import crypto from 'crypto'
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-})
+let razorpayInstance: Razorpay | null = null
+
+function getRazorpay(): Razorpay {
+  if (!razorpayInstance) {
+    razorpayInstance = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID!,
+      key_secret: process.env.RAZORPAY_KEY_SECRET!,
+    })
+  }
+  return razorpayInstance
+}
 
 export async function createRazorpayOrder(amountPaise: number, receipt: string, notes?: Record<string, string>) {
-  return razorpay.orders.create({
+  return getRazorpay().orders.create({
     amount: amountPaise,
     currency: 'INR',
     receipt,
@@ -25,9 +32,7 @@ export function verifyRazorpaySignature(orderId: string, paymentId: string, sign
 }
 
 export async function createRazorpayRefund(paymentId: string, amountPaise: number) {
-  return (razorpay.payments as any).refund(paymentId, {
+  return (getRazorpay().payments as any).refund(paymentId, {
     amount: amountPaise,
   })
 }
-
-export { razorpay }

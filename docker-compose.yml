@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ticketplatform_db
+    container_name: fairpass_db
     environment:
       POSTGRES_USER: ticketuser
       POSTGRES_PASSWORD: ticketpass
@@ -15,6 +15,28 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fairpass_app
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgresql://ticketuser:ticketpass@postgres:5432/ticketplatform
+      NEXTAUTH_SECRET: dev-secret-change-in-production
+      NEXTAUTH_URL: http://localhost:3000
+      QR_JWT_SECRET: dev-qr-secret-change-in-production
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: FairPass <onboarding@resend.dev>
+      CRON_SECRET: dev-cron-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
